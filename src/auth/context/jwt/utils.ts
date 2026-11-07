@@ -1,0 +1,94 @@
+import Cookie from 'js-cookie';
+
+import { paths } from 'src/paths';
+
+import axios from 'src/utils/axios';
+
+// ----------------------------------------------------------------------
+
+function jwtDecode(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window
+        .atob(base64)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    return null;
+  }
+}
+
+// ----------------------------------------------------------------------
+
+export const isValidToken = (accessToken: string) => {
+  if (!accessToken) {
+    return false;
+  }
+
+  const decoded = jwtDecode(accessToken);
+  if (!decoded || !decoded.exp) {
+    return false;
+  }
+
+  const currentTime = Date.now() / 1000;
+
+  return decoded.exp > currentTime;
+};
+
+// ----------------------------------------------------------------------
+
+export const tokenExpired = (exp: number) => {
+  const currentTime = Date.now() / 1000;
+  const timeLeft = (exp - currentTime) * 1000;
+
+  if (timeLeft <= 0) {
+    Cookie.remove('access_token', { path: '/' });
+    Cookie.remove('user', { path: '/' });
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = paths.auth.jwt.login;
+    }
+    return;
+  }
+
+  setTimeout(() => {
+    Cookie.remove('access_token', { path: '/' });
+    Cookie.remove('user', { path: '/' });
+    try {
+      window.sessionStorage.removeItem('access_token');
+      window.sessionStorage.removeItem('user');
+    } catch (e) {
+      // ignore
+    }
+
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = paths.auth.jwt.login;
+    }
+  }, timeLeft);
+};
+
+// ----------------------------------------------------------------------
+
+export const setSession = (accessToken: string | null) => {
+  if (accessToken) {
+    // sessionStorage.setItem('accessToken', accessToken);
+
+    axios.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+    // This function below will handle when token is expired
+    const { exp } = jwtDecode(accessToken); // ~3 days by minimals server
+    // tokenExpired(exp); // TODO: uncomment this line when deploy
+  } else {
+    // sessionStorage.removeItem('accessToken');
+    Cookie.remove('access_token', { path: '/' });
+    Cookie.remove('user', { path: '/' });
+    delete axios.defaults.headers.common.Authorization;
+  }
+};
+
+export const getAccessToken = () => {};
